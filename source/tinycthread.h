@@ -31,6 +31,89 @@ SPDX-License-Identifier: Zlib
 extern "C" {
 #endif
 
+#if defined(TINYCTHREAD_ENABLE_THREADS) && !TINYCTHREAD_ENABLE_THREADS
+
+#include <stddef.h>
+
+#define TTHREAD_NORETURN
+#define TTHREAD_THREAD_LOCAL
+#ifndef _Thread_local
+#define _Thread_local
+#endif
+#ifndef thread_local
+#define thread_local _Thread_local
+#endif
+
+typedef struct {
+  int result;
+  int valid;
+} thrd_t;
+typedef int mtx_t;
+typedef int cnd_t;
+typedef int tss_t;
+typedef int once_flag;
+typedef void (*tss_dtor_t)(void *val);
+typedef int (*thrd_start_t)(void *arg);
+
+#define ONCE_FLAG_INIT 0
+#define TSS_DTOR_ITERATIONS 1
+
+enum
+{
+  thrd_success  = 0,
+  thrd_busy     = 1,
+  thrd_error    = 2,
+  thrd_nomem    = 3,
+  thrd_timedout = 4
+};
+
+enum
+{
+  mtx_plain     = 0,
+  mtx_recursive = 1,
+  mtx_timed     = 2
+};
+
+#define thrd_exit(res)              ((void)(res))
+#define thrd_yield()                ((void)0)
+
+struct timespec;
+int thrd_create(thrd_t *thr, thrd_start_t func, void *arg);
+thrd_t thrd_current(void);
+int thrd_detach(thrd_t thr);
+int thrd_equal(thrd_t thr0, thrd_t thr1);
+int thrd_join(thrd_t thr, int *res);
+int thrd_sleep(const struct timespec *duration, struct timespec *remaining);
+
+#define mtx_init(mtx, type)         (thrd_success)
+#define mtx_destroy(mtx)            ((void)0)
+#define mtx_lock(mtx)               (thrd_success)
+#define mtx_timedlock(mtx, ts)      (thrd_success)
+#define mtx_trylock(mtx)            (thrd_success)
+#define mtx_unlock(mtx)             (thrd_success)
+
+#define cnd_init(cond)              (thrd_success)
+#define cnd_destroy(cond)           ((void)0)
+#define cnd_signal(cond)            (thrd_success)
+#define cnd_broadcast(cond)         (thrd_success)
+#define cnd_wait(cond, mtx)         (thrd_success)
+#define cnd_timedwait(cond, mtx, ts) (thrd_success)
+
+int tss_create(tss_t *key, tss_dtor_t dtor);
+void tss_delete(tss_t key);
+void *tss_get(tss_t key);
+int tss_set(tss_t key, void *val);
+
+#define call_once(flag, func) \
+  do { \
+    if (!(*(flag))) { \
+      (func)(); \
+      *(flag) = 1; \
+    } \
+  } while (0)
+
+#else
+
 /**
 * @file
 * @mainpage TinyCThread API Reference
@@ -180,6 +263,7 @@ int _tthread_timespec_get(struct timespec *ts, int base);
 #endif
 
 #define thread_local _Thread_local
+#define TTHREAD_THREAD_LOCAL thread_local
 
 /* Macros */
 #if defined(_TTHREAD_WIN32_)
@@ -485,7 +569,9 @@ int tss_set(tss_t key, void *val);
   #define ONCE_FLAG_INIT {0,}
 #elif !(defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
   #define once_flag pthread_once_t
-  #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
+  #ifndef ONCE_FLAG_INIT
+    #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
+  #endif
 #endif
 
 /** Invoke a callback exactly once
@@ -500,6 +586,8 @@ int tss_set(tss_t key, void *val);
 #endif
 
 #endif
+
+#endif /* TINYCTHREAD_ENABLE_THREADS */
 
 #ifdef __cplusplus
   }

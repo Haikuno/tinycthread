@@ -26,7 +26,142 @@ SPDX-License-Identifier: Zlib
 
 #include "tinycthread.h"
 
-#ifndef _TTHREAD_CTHREADS_
+#if defined(TINYCTHREAD_ENABLE_THREADS) && !TINYCTHREAD_ENABLE_THREADS
+
+#include <stdlib.h>
+#include <time.h>
+
+typedef struct {
+  int mActive;
+  void *mValue;
+  tss_dtor_t mDestructor;
+} _tss_entry;
+
+static _tss_entry *_tss_entries;
+static size_t _tss_entry_count;
+static size_t _tss_entry_capacity;
+
+int thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
+{
+  thr->result = func(arg);
+  thr->valid = 1;
+  return thrd_success;
+}
+
+thrd_t thrd_current(void)
+{
+  thrd_t thr;
+  thr.result = 0;
+  thr.valid = 1;
+  return thr;
+}
+
+int thrd_detach(thrd_t thr)
+{
+  return thr.valid ? thrd_success : thrd_error;
+}
+
+int thrd_equal(thrd_t thr0, thrd_t thr1)
+{
+  (void)thr0;
+  (void)thr1;
+  return 1;
+}
+
+int thrd_join(thrd_t thr, int *res)
+{
+  if (!thr.valid)
+  {
+    return thrd_error;
+  }
+  if (res != NULL)
+  {
+    *res = thr.result;
+  }
+  return thrd_success;
+}
+
+int thrd_sleep(const struct timespec *duration, struct timespec *remaining)
+{
+  (void)duration;
+  if (remaining != NULL)
+  {
+    remaining->tv_sec = 0;
+    remaining->tv_nsec = 0;
+  }
+  return 0;
+}
+
+int tss_create(tss_t *key, tss_dtor_t dtor)
+{
+  size_t i;
+  _tss_entry *entries;
+
+  for (i = 0; i < _tss_entry_count; ++i)
+  {
+    if (!_tss_entries[i].mActive)
+    {
+      _tss_entries[i].mActive = 1;
+      _tss_entries[i].mValue = NULL;
+      _tss_entries[i].mDestructor = dtor;
+      *key = (tss_t)i;
+      return thrd_success;
+    }
+  }
+
+  if (_tss_entry_count == _tss_entry_capacity)
+  {
+    size_t capacity = _tss_entry_capacity ? _tss_entry_capacity * 2 : 8;
+    entries = (_tss_entry *)realloc(_tss_entries, capacity * sizeof(*entries));
+    if (entries == NULL)
+    {
+      return thrd_error;
+    }
+    _tss_entries = entries;
+    _tss_entry_capacity = capacity;
+  }
+
+  i = _tss_entry_count++;
+  _tss_entries[i].mActive = 1;
+  _tss_entries[i].mValue = NULL;
+  _tss_entries[i].mDestructor = dtor;
+  *key = (tss_t)i;
+  return thrd_success;
+}
+
+void tss_delete(tss_t key)
+{
+  if (key >= 0 && (size_t)key < _tss_entry_count && _tss_entries[key].mActive)
+  {
+    _tss_entries[key].mActive = 0;
+    _tss_entries[key].mValue = NULL;
+    _tss_entries[key].mDestructor = NULL;
+  }
+}
+
+void *tss_get(tss_t key)
+{
+  if (key < 0 || (size_t)key >= _tss_entry_count || !_tss_entries[key].mActive)
+  {
+    return NULL;
+  }
+  return _tss_entries[key].mValue;
+}
+
+int tss_set(tss_t key, void *val)
+{
+  if (key < 0 || (size_t)key >= _tss_entry_count || !_tss_entries[key].mActive)
+  {
+    return thrd_error;
+  }
+  _tss_entries[key].mValue = val;
+  return thrd_success;
+}
+
+#else
+
+#if (!defined(TINYCTHREAD_ENABLE_THREADS) || TINYCTHREAD_ENABLE_THREADS) && \
+    !defined(_TTHREAD_CTHREADS_)
 #include <stdlib.h>
 
 /* Platform specific includes */
@@ -941,3 +1076,5 @@ void call_once(once_flag *flag, void (*func)(void))
 }
 #endif
 #endif
+
+#endif /* TINYCTHREAD_ENABLE_THREADS */

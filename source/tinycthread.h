@@ -34,15 +34,22 @@ extern "C" {
 #if defined(TINYCTHREAD_ENABLE_THREADS) && !TINYCTHREAD_ENABLE_THREADS
 
 #include <stddef.h>
+#include <time.h>
+
+#if defined(_WIN32) && !defined(TIME_UTC)
+#define TIME_UTC 1
+#define _TTHREAD_EMULATE_TIMESPEC_GET_
+struct _tthread_timespec {
+  time_t tv_sec;
+  long tv_nsec;
+};
+#define timespec _tthread_timespec
+int _tthread_timespec_get(struct timespec *ts, int base);
+#define timespec_get _tthread_timespec_get
+#endif
 
 #define TTHREAD_NORETURN
 #define TTHREAD_THREAD_LOCAL
-#ifndef _Thread_local
-#define _Thread_local
-#endif
-#ifndef thread_local
-#define thread_local _Thread_local
-#endif
 
 typedef struct {
   int result;
@@ -74,7 +81,6 @@ enum
   mtx_timed     = 2
 };
 
-#define thrd_exit(res)              ((void)(res))
 #define thrd_yield()                ((void)0)
 
 struct timespec;
@@ -83,34 +89,29 @@ thrd_t thrd_current(void);
 int thrd_detach(thrd_t thr);
 int thrd_equal(thrd_t thr0, thrd_t thr1);
 int thrd_join(thrd_t thr, int *res);
+void thrd_exit(int res);
 int thrd_sleep(const struct timespec *duration, struct timespec *remaining);
 
-#define mtx_init(mtx, type)         (thrd_success)
-#define mtx_destroy(mtx)            ((void)0)
-#define mtx_lock(mtx)               (thrd_success)
-#define mtx_timedlock(mtx, ts)      (thrd_success)
-#define mtx_trylock(mtx)            (thrd_success)
-#define mtx_unlock(mtx)             (thrd_success)
+int mtx_init(mtx_t *mtx, int type);
+void mtx_destroy(mtx_t *mtx);
+int mtx_lock(mtx_t *mtx);
+int mtx_timedlock(mtx_t *mtx, const struct timespec *ts);
+int mtx_trylock(mtx_t *mtx);
+int mtx_unlock(mtx_t *mtx);
 
-#define cnd_init(cond)              (thrd_success)
-#define cnd_destroy(cond)           ((void)0)
-#define cnd_signal(cond)            (thrd_success)
-#define cnd_broadcast(cond)         (thrd_success)
-#define cnd_wait(cond, mtx)         (thrd_success)
-#define cnd_timedwait(cond, mtx, ts) (thrd_success)
+int cnd_init(cnd_t *cond);
+void cnd_destroy(cnd_t *cond);
+int cnd_signal(cnd_t *cond);
+int cnd_broadcast(cnd_t *cond);
+int cnd_wait(cnd_t *cond, mtx_t *mtx);
+int cnd_timedwait(cnd_t *cond, mtx_t *mtx, const struct timespec *ts);
 
 int tss_create(tss_t *key, tss_dtor_t dtor);
 void tss_delete(tss_t key);
 void *tss_get(tss_t key);
 int tss_set(tss_t key, void *val);
 
-#define call_once(flag, func) \
-  do { \
-    if (!(*(flag))) { \
-      (func)(); \
-      *(flag) = 1; \
-    } \
-  } while (0)
+void call_once(once_flag *flag, void (*func)(void));
 
 #else
 
